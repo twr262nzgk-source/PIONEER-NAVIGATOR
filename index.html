@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pioneer Navigator</title>
+
+<link rel="stylesheet"
+href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+
+<style>
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: Arial, sans-serif;
+  background: #101522;
+  color: white;
+}
+
+header {
+  background: #171f35;
+  padding: 17px;
+  text-align: center;
+}
+
+header h2 {
+  margin: 0;
+  color: #a78bfa;
+}
+
+header p {
+  margin-bottom: 0;
+  font-size: 13px;
+}
+
+.controls {
+  padding: 12px;
+  background: #202b42;
+}
+
+input {
+  width: 100%;
+  padding: 13px;
+  margin-bottom: 8px;
+  border: 0;
+  border-radius: 7px;
+  font-size: 15px;
+}
+
+button {
+  padding: 12px;
+  border: 0;
+  border-radius: 7px;
+  background: #8055df;
+  color: white;
+  font-weight: bold;
+  margin: 3px;
+}
+
+button:active {
+  background: #5735a8;
+}
+
+#map {
+  height: 65vh;
+  width: 100%;
+}
+
+footer {
+  padding: 12px;
+  text-align: center;
+  font-size: 12px;
+  color: #aaa;
+}
+</style>
+</head>
+
+<body>
+
+<header>
+  <h2>🌍 PIONEER NAVIGATOR</h2>
+  <p>Global navigation for the Pi community</p>
+</header>
+
+<div class="controls">
+
+  <input id="destination"
+  type="text"
+  placeholder="Enter destination or address">
+
+  <button onclick="findRoute()">
+  🚗 Find Route
+  </button>
+
+  <button onclick="myLocation()">
+  📍 My Location
+  </button>
+
+  <button onclick="clearRoute()">
+  Clear Route
+  </button>
+
+</div>
+
+<div id="map"></div>
+
+<footer>
+  Pioneer Navigator | Powered by OpenStreetMap
+</footer>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+<script>
+
+const map = L.map('map').setView([20, 0], 2);
+
+L.tileLayer(
+'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+{
+  attribution: '&copy; OpenStreetMap contributors',
+  maxZoom: 19
+}
+).addTo(map);
+
+let userPosition = null;
+let userMarker = null;
+let routeLayer = null;
+
+function myLocation() {
+
+  if (!navigator.geolocation) {
+    alert("Location is not supported.");
+    return;
+  }
+
+  navigator.geolocation.getCurrentPosition(
+    function(position) {
+
+      userPosition = [
+        position.coords.longitude,
+        position.coords.latitude
+      ];
+
+      if (userMarker) {
+        map.removeLayer(userMarker);
+      }
+
+      userMarker = L.marker([
+        position.coords.latitude,
+        position.coords.longitude
+      ]).addTo(map);
+
+      userMarker.bindPopup("Your location").openPopup();
+
+      map.setView([
+        position.coords.latitude,
+        position.coords.longitude
+      ], 15);
+
+    },
+    function() {
+      alert("Please allow location access.");
+    }
+  );
+}
+
+async function findRoute() {
+
+  const destination =
+  document.getElementById("destination").value.trim();
+
+  if (!destination) {
+    alert("Enter your destination.");
+    return;
+  }
+
+  if (!userPosition) {
+    alert("First select My Location.");
+    return;
+  }
+
+  try {
+
+    const search = await fetch(
+      "https://nominatim.openstreetmap.org/search?format=json&limit=1&q="
+      + encodeURIComponent(destination)
+    );
+
+    const places = await search.json();
+
+    if (!places.length) {
+      alert("Destination not found.");
+      return;
+    }
+
+    const endLat = Number(places[0].lat);
+    const endLon = Number(places[0].lon);
+
+    const startLon = userPosition[0];
+    const startLat = userPosition[1];
+
+    const routeResponse = await fetch(
+      `https://router.project-osrm.org/route/v1/driving/${startLon},${startLat};${endLon},${endLat}?overview=full&geometries=geojson`
+    );
+
+    const routeData = await routeResponse.json();
+
+    if (!routeData.routes || !routeData.routes.length) {
+      alert("Route not available.");
+      return;
+    }
+
+    if (routeLayer) {
+      map.removeLayer(routeLayer);
+    }
+
+    const coordinates =
+      routeData.routes[0].geometry.coordinates.map(
+        point => [point[1], point[0]]
+      );
+
+    routeLayer = L.polyline(coordinates, {
+      color: '#a78bfa',
+      weight: 5
+    }).addTo(map);
+
+    map.fitBounds(routeLayer.getBounds());
+
+    const distance =
+      (routeData.routes[0].distance / 1000).toFixed(1);
+
+    const minutes =
+      Math.round(routeData.routes[0].duration / 60);
+
+    alert(
+      "Distance: " + distance +
+      " km\nEstimated time: " + minutes + " minutes"
+    );
+
+  } catch(error) {
+    alert("Navigation service temporarily unavailable.");
+  }
+}
+
+function clearRoute() {
+
+  if (routeLayer) {
+    map.removeLayer(routeLayer);
+    routeLayer = null;
+  }
+
+}
+
+</script>
+
+</body>
+</html>
